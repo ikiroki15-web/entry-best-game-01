@@ -149,8 +149,9 @@ function runGame() {
     // A press only flares on the frame's first step, and only when the game was already in
     // play when it happened: the click that starts the game must not spend light on a flare.
     const pressed = firstStep && wasPlaying && (actions & (ACTION_FLARE | ACTION_CONFIRM)) !== 0;
-    // A held pointer keeps flaring whenever the burst is ready.
-    const held = input.pointer().down && wasPlaying;
+    // A held pointer keeps flaring whenever the burst is ready; holding Space
+    // does the same for keyboard players.
+    const held = input.flareHeld() && wasPlaying;
     const events = world.step(STEP, dir, pressed || held, false);
     if (events & EVENT_ORB) audio.pickup();
     if (events & EVENT_PETAL) audio.petal();
@@ -158,7 +159,7 @@ function runGame() {
     if (events & EVENT_KILL) audio.kill();
     if (events & EVENT_HIT) {
       audio.hit();
-      announce(`Hit. Light ${Math.ceil(world.state.light)}.`);
+      announce(`Hit. Light ${Math.floor(world.state.light)}.`);
     }
     if (events & EVENT_CHARM) {
       audio.charm();

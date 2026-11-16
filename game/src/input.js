@@ -28,6 +28,7 @@ export function createInput(target) {
   let pointerX = 0;
   let pointerY = 0;
   let pointerDown = false;
+  let confirmHeld = false;
 
   window.addEventListener('keydown', (event) => {
     if (LEFT.has(event.code)) left = true;
@@ -35,6 +36,7 @@ export function createInput(target) {
     else if (UP.has(event.code)) up = true;
     else if (DOWN.has(event.code)) down = true;
     else if (CONFIRM.has(event.code)) {
+      confirmHeld = true;
       if (!event.repeat) actions |= ACTION_CONFIRM;
     } else if (PAUSE.has(event.code)) {
       if (!event.repeat) actions |= ACTION_PAUSE;
@@ -50,6 +52,7 @@ export function createInput(target) {
     else if (RIGHT.has(event.code)) right = false;
     else if (UP.has(event.code)) up = false;
     else if (DOWN.has(event.code)) down = false;
+    else if (CONFIRM.has(event.code)) confirmHeld = false;
   });
   // A key released while the tab is hidden never sends keyup: let go of everything on blur.
   window.addEventListener('blur', () => {
@@ -57,6 +60,7 @@ export function createInput(target) {
     right = false;
     up = false;
     down = false;
+    confirmHeld = false;
   });
   target.addEventListener('pointermove', (event) => {
     const rect = target.getBoundingClientRect();
@@ -88,6 +92,10 @@ export function createInput(target) {
     /** Last pointer position in canvas pixels, and whether the button is held. */
     pointer() {
       return { x: pointerX, y: pointerY, down: pointerDown };
+    },
+    /** Whether a flare is being held down: mouse button or Space/Enter. */
+    flareHeld() {
+      return pointerDown || confirmHeld;
     },
   };
 }

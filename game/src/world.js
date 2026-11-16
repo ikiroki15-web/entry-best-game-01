@@ -4,7 +4,7 @@
 // without the world knowing about them. Nothing here allocates after createWorld returns.
 
 import {
-  BLESSINGS, EMBER, ENEMY, FIELD, FLARE, LIGHT, MOONPETAL, PLAYER, POOL, SCORE,
+  BLESSINGS, EMBER, ENEMY, FIELD, FLARE, LIGHT, MOONPETAL, NIGHT, PLAYER, POOL, SCORE,
   WAVE_DEFS, WAVES,
 } from './config.js';
 
@@ -33,6 +33,13 @@ const DART_RECOVER = 3;
 /** Thorn Light: seconds between burn ticks on the same enemy (was every frame). */
 const THORN_COOLDOWN = 0.5;
 
+/**
+ * Thorn Light: seconds of unbroken touch before the first burn tick. A brush in
+ * passing does nothing, so flying straight through shadows no longer kills them
+ * for free — the blessing only burns shadows that cling to the moth.
+ */
+const THORN_BURN_DELAY = 0.5;
+
 function dist2(ax, ay, bx, by) {
   const dx = ax - bx;
   const dy = ay - by;
@@ -59,7 +66,7 @@ export function createWorld(random) {
     enemies.push({
       active: false, kind: KIND_WISP, x: 0, y: 0, vx: 0, vy: 0, hp: 1, maxHp: 1,
       radius: 14, speed: 90, wobble: 0, state: DART_CHASE, timer: 0, flash: 0,
-      lx: 0, ly: 0, thornCd: 0,
+      lx: 0, ly: 0, thornCd: 0, burn: 0,
     });
   }
   const orbs = [];
@@ -87,6 +94,7 @@ export function createWorld(random) {
     light: LIGHT.max, maxLight: LIGHT.max,
     score: 0, kills: 0, orbsCollected: 0, time: 0,
     wave: 1, waveState: 'fighting', spawnQueue: [], spawnTimer: 0, emberTimer: EMBER.interval,
+    waveTime: 0, waveLimit: 0, deepened: false, petalsCollected: 0,
     blessings: {}, offered: [], flareCooldown: 0, shake: 0, flareRing: 0, flareRadius: 0,
     dawn: 0, charmUsed: false, victory: false, over: false, lastKillKind: -1,
   };
@@ -172,10 +180,18 @@ export function createWorld(random) {
     e.timer = 0;
     e.flash = 0;
     e.thornCd = 0;
+    e.burn = 0;
   }
 
   function spawnOrb(kind, x, y) {
-    const o = freeOrb();
+    let o = freeOrb();
+    if (!o && kind === KIND_PETAL) {
+      // Moonpetals are progression — only six a game. A full orb pool must never
+      // eat one: reuse an ember instead (embers are plentiful, petals are not).
+      for (let i = 0; i < orbs.length; i += 1) {
+        if (orbs[i].active && orbs[i].kind === KIND_EMBER) { o = orbs[i]; break; }
+      }
+    }
     if (!o) return;
     o.active = true;
     o.kind = kind;
@@ -264,6 +280,9 @@ export function createWorld(random) {
       state.spawnQueue[j] = tmp;
     }
     state.spawnTimer = 0.8;
+    state.waveTime = 0;
+    state.deepened = false;
+    state.waveLimit = NIGHT.baseTime + NIGHT.perShadow * state.spawnQueue.length;
   }
 
   function offerBlessings() {
@@ -313,7 +332,9 @@ export function createWorld(random) {
     state.score = 0;
     state.kills = 0;
     state.orbsCollected = 0;
+    state.petalsCollected = 0;
     state.time = 0;
+    state.emberTimer = EMBER.interval;
     state.blessings = {};
     state.offered = [];
     state.flareCooldown = 0;
@@ -358,7 +379,8 @@ export function createWorld(random) {
     player.flap += dt * (player.moving ? 26 : 12);
 
     if (!harmless && !state.over && !state.victory) {
-      state.light -= (LIGHT.drain + LIGHT.drainPerWave * (state.wave - 1)) * dt;
+      const drainMult = state.deepened ? NIGHT.deepenDrainMult : 1;
+      state.light -= (LIGHT.drain + LIGHT.drainPerWave * (state.wave - 1)) * drainMult * dt;
       if (state.light <= 0) {
         state.light = 0;
         if ((state.blessings.charm ?? 0) > 0 && !state.charmUsed) {
@@ -391,8 +413,8 @@ export function createWorld(random) {
       }
     }
 
-    // Ambient embers drift in while the moth flies.
-    if (state.waveState !== 'blessing') {
+    // Ambient embers drift in while the moth flies — never once the dark deepens.
+    if (state.waveState !== 'blessing' && !state.deepened) {
       state.emberTimer -= dt;
       if (state.emberTimer <= 0) {
         let ambient = 0;
@@ -401,6 +423,16 @@ export function createWorld(random) {
           spawnOrb(KIND_EMBER, 60 + random() * (FIELD.width - 120), 60 + random() * (FIELD.height - 120));
         }
         state.emberTimer = EMBER.interval;
+      }
+    }
+
+    // The night's clock: linger too long and the dark deepens — the drain
+    // triples and no more ambient embers drift in, so stalling starves.
+    if (!harmless && state.waveState === 'fighting' && !state.over && !state.victory) {
+      state.waveTime += dt;
+      if (!state.deepened && state.waveTime >= state.waveLimit) {
+        state.deepened = true;
+        floatText(player.x, player.y - 30, 'The dark deepens!', '#ff5d7a', 28);
       }
     }
 
@@ -461,15 +493,32 @@ export function createWorld(random) {
 
       if (harmless || state.over || state.victory) continue;
       if (d < e.radius + player.radius) {
-        if ((state.blessings.thorns ?? 0) > 0 && e.thornCd <= 0) {
-          e.thornCd = THORN_COOLDOWN;
-          e.hp -= 1;
-          e.flash = 0.15;
-          burst(e.x, e.y, '#ffd76a', 6, 140, 3);
-          if (e.hp <= 0) {
-            killEnemy(e, true);
-            events |= EVENT_KILL;
-            continue;
+        if ((state.blessings.thorns ?? 0) > 0) {
+          // Thorn Light burns only shadows that catch the moth. Steering into a
+          // shadow is the moth's attack, not the shadow's, so no burn builds
+          // while the moth charges — that is what stops ramming from being
+          // the game. A shadow that clings to a moth standing its ground, or
+          // fleeing, still burns.
+          const nx = -dx / d;
+          const ny = -dy / d;
+          const toward = dir.x * nx + dir.y * ny;
+          if (toward <= 0) {
+            e.burn += dt;
+            if (e.burn >= THORN_BURN_DELAY && e.thornCd <= 0) {
+              e.thornCd = THORN_COOLDOWN;
+              e.burn = 0;
+              e.hp -= 1;
+              e.flash = 0.15;
+              burst(e.x, e.y, '#ffd76a', 6, 140, 3);
+              if (e.hp <= 0) {
+                killEnemy(e, true);
+                events |= EVENT_KILL;
+                // No `continue` here: the touch that lit the shadow still lands
+                // below, so a thorn kill is never a free kill.
+              }
+            }
+          } else {
+            e.burn = 0;
           }
         }
         if (player.invulnerable === 0) {
@@ -494,6 +543,9 @@ export function createWorld(random) {
             }
           }
         }
+      } else {
+        // Out of touch the burn meter cools: only unbroken contact ignites.
+        e.burn = 0;
       }
     }
 
@@ -520,10 +572,11 @@ export function createWorld(random) {
         o.active = false;
         state.orbsCollected += 1;
         const isPetal = o.kind === KIND_PETAL;
+        if (isPetal) state.petalsCollected += 1;
         const def = isPetal ? MOONPETAL : EMBER;
         state.light = Math.min(state.maxLight, state.light + def.light);
         addScore(def.score);
-        floatText(o.x, o.y - 12, `+${def.score}`, isPetal ? '#c9b8ff' : '#f2c94c', isPetal ? 24 : 18);
+        floatText(o.x, o.y - 12, `+${Math.round(def.score * (1 + 0.5 * (state.blessings.greed ?? 0)))}`, isPetal ? '#c9b8ff' : '#f2c94c', isPetal ? 24 : 18);
         burst(o.x, o.y, isPetal ? '#c9b8ff' : '#ffb347', isPetal ? 14 : 8, 130, 3);
         events |= isPetal ? EVENT_PETAL : EVENT_ORB;
       }

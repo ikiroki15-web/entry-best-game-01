@@ -5,7 +5,7 @@
 // the screen grow. All animation reads the world's own time, never the wall clock, so a
 // staged scene always paints the same frame.
 
-import { BLESSINGS, FIELD, FONT, LIGHT, PALETTE, WAVES } from './config.js';
+import { BLESSINGS, FIELD, FLARE, FONT, LIGHT, PALETTE, WAVES } from './config.js';
 import { KIND_BRUTE, KIND_DART, KIND_EMBER, KIND_PETAL, KIND_WISP } from './world.js';
 
 export const SCREEN_TITLE = 'title';
@@ -361,7 +361,7 @@ export function createRenderer(canvas) {
     context.lineWidth = 1.5;
     roundRect(barX, barY, barW, 18, 9);
     context.stroke();
-    text(lightLabel(`${Math.ceil(state.light)} / ${state.maxLight}`), barX + barW + 10, 40, 18, PALETTE.text, 'left', '700');
+    text(lightLabel(`${Math.floor(state.light)} / ${state.maxLight}`), barX + barW + 10, 40, 18, PALETTE.text, 'left', '700');
     // Wave and shadows, top centre.
     text(waveLabel(`${state.wave} / ${WAVES}`), FIELD.width / 2, 18, 26, PALETTE.text, 'center', '700');
     let shadows = state.spawnQueue.length;
@@ -372,7 +372,8 @@ export function createRenderer(canvas) {
     text(`Best ${state.best ?? 0}`, FIELD.width - 24, 48, 16, PALETTE.muted, 'right');
     // Flare cooldown, bottom left.
     text('FLARE  ·  Space / Click', 24, FIELD.height - 52, 15, PALETTE.muted, 'left', '700');
-    const cdFrac = 1 - state.flareCooldown / 1.15;
+    const cdMax = FLARE.cooldown * (1 - FLARE.cooldownPerBlessing * (state.blessings.quick ?? 0));
+    const cdFrac = 1 - state.flareCooldown / cdMax;
     context.fillStyle = '#0a0e22';
     roundRect(24, FIELD.height - 30, 160, 10, 5);
     context.fill();
@@ -507,7 +508,7 @@ export function createRenderer(canvas) {
     } else if (screen === SCREEN_OVER) {
       drawPanel('The Light Fades', [`Score ${state.score}`, `Best ${best}`, `Reached Night ${state.wave}  ·  ${state.kills} shadows scattered`], 'Press Space or click to fly again');
     } else if (screen === SCREEN_WIN) {
-      drawPanel('Dawn Breaks', [`Score ${state.score}`, `Best ${best}`, `All ${WAVES} nights survived`, `${state.kills} shadows scattered  ·  ${state.orbsCollected} embers gathered`], 'Press Space or click to fly again');
+      drawPanel('Dawn Breaks', [`Score ${state.score}`, `Best ${best}`, `All ${WAVES} nights survived`, `${state.kills} shadows scattered  ·  ${state.orbsCollected} orbs gathered, ${state.petalsCollected ?? 0} moonpetals`], 'Press Space or click to fly again');
     } else if (screen === SCREEN_PLAY && state.time < 6 && state.wave === 1) {
       text('Gather the glowing embers — your light is draining', FIELD.width / 2, 120, 20, PALETTE.text, 'center');
     }

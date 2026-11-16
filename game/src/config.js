@@ -35,6 +35,15 @@ export const LIGHT = {
   charmRestore: 50,
 };
 
+/** A night may not be stalled forever: after its time the dark deepens. */
+export const NIGHT = {
+  /** Seconds a night may last before the dark deepens: base plus per shadow. */
+  baseTime: 75,
+  perShadow: 3,
+  /** Light drain multiplier once the dark has deepened. */
+  deepenDrainMult: 3,
+};
+
 export const FLARE = {
   radius: 150,
   radiusPerBlessing: 0.25,
@@ -81,7 +90,7 @@ export const SCORE = {
 };
 
 /** How many of each thing can exist at once; pools are allocated once, at boot. */
-export const POOL = { enemies: 48, orbs: 28, particles: 240, texts: 28 };
+export const POOL = { enemies: 48, orbs: 48, particles: 240, texts: 28 };
 
 /** Blessings offered between waves. id, name, one-line promise, max stacks. */
 export const BLESSINGS = [
@@ -90,7 +99,7 @@ export const BLESSINGS = [
   { id: 'heart', name: 'Bright Heart', desc: '+25 max light, refill 25', max: 3 },
   { id: 'magnet', name: 'Ember Magnet', desc: 'Embers drift to you', max: 2 },
   { id: 'quick', name: 'Quick Flare', desc: 'Flare recharges 25% faster', max: 3 },
-  { id: 'thorns', name: 'Thorn Light', desc: 'Shadows burn on touch', max: 2 },
+  { id: 'thorns', name: 'Thorn Light', desc: 'Shadows that catch you burn', max: 2 },
   { id: 'charm', name: 'Second Dawn', desc: 'Once: survive death at 50 light', max: 1 },
   { id: 'greed', name: 'Greedy Glow', desc: '+50% score from everything', max: 2 },
 ];
