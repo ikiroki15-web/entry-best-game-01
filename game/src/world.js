@@ -30,6 +30,9 @@ const DART_WINDUP = 1;
 const DART_LUNGE = 2;
 const DART_RECOVER = 3;
 
+/** Thorn Light: seconds between burn ticks on the same enemy (was every frame). */
+const THORN_COOLDOWN = 0.5;
+
 function dist2(ax, ay, bx, by) {
   const dx = ax - bx;
   const dy = ay - by;
@@ -56,7 +59,7 @@ export function createWorld(random) {
     enemies.push({
       active: false, kind: KIND_WISP, x: 0, y: 0, vx: 0, vy: 0, hp: 1, maxHp: 1,
       radius: 14, speed: 90, wobble: 0, state: DART_CHASE, timer: 0, flash: 0,
-      lx: 0, ly: 0,
+      lx: 0, ly: 0, thornCd: 0,
     });
   }
   const orbs = [];
@@ -168,6 +171,7 @@ export function createWorld(random) {
     e.state = DART_CHASE;
     e.timer = 0;
     e.flash = 0;
+    e.thornCd = 0;
   }
 
   function spawnOrb(kind, x, y) {
@@ -405,6 +409,7 @@ export function createWorld(random) {
       const e = enemies[i];
       if (!e.active) continue;
       if (e.flash > 0) e.flash = Math.max(0, e.flash - dt);
+      if (e.thornCd > 0) e.thornCd = Math.max(0, e.thornCd - dt);
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -456,7 +461,8 @@ export function createWorld(random) {
 
       if (harmless || state.over || state.victory) continue;
       if (d < e.radius + player.radius) {
-        if ((state.blessings.thorns ?? 0) > 0) {
+        if ((state.blessings.thorns ?? 0) > 0 && e.thornCd <= 0) {
+          e.thornCd = THORN_COOLDOWN;
           e.hp -= 1;
           e.flash = 0.15;
           burst(e.x, e.y, '#ffd76a', 6, 140, 3);
