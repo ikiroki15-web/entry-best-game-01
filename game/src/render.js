@@ -6,7 +6,9 @@
 // staged scene always paints the same frame.
 
 import { BLESSINGS, FIELD, FLARE, FONT, LIGHT, PALETTE, WAVES } from './config.js';
-import { KIND_BRUTE, KIND_DART, KIND_EMBER, KIND_PETAL, KIND_WISP } from './world.js';
+import { comboMultiplier } from './combo.js';
+import { themeForWave } from './nights.js';
+import { KIND_BRUTE, KIND_DART, KIND_EMBER, KIND_PETAL, KIND_SPITTER, KIND_WARDEN, KIND_WISP } from './world.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -76,11 +78,34 @@ export function createRenderer(canvas) {
   }
 
   function drawGarden(state) {
+    const theme = themeForWave(state.wave);
     const gradient = context.createLinearGradient(0, 0, 0, FIELD.height);
-    gradient.addColorStop(0, PALETTE.skyTop);
-    gradient.addColorStop(1, PALETTE.skyBottom);
+    gradient.addColorStop(0, theme.skyTop);
+    gradient.addColorStop(1, theme.skyBottom);
     context.fillStyle = gradient;
     context.fillRect(0, 0, FIELD.width, FIELD.height);
+
+    // The moon, high over the garden, grows fuller as the nights pass. It sits
+    // inside the sky band (above the grass at y=96) so it always shows whole.
+    const moonX = 1060;
+    const moonY = 54;
+    const moonR = 30 * theme.moonSize;
+    const moonGlow = context.createRadialGradient(moonX, moonY, moonR * 0.4, moonX, moonY, moonR * 2.6);
+    moonGlow.addColorStop(0, theme.moon === '#ff9a7a' ? 'rgba(255, 120, 90, 0.35)' : 'rgba(255, 240, 200, 0.28)');
+    moonGlow.addColorStop(1, 'rgba(255, 240, 200, 0)');
+    context.fillStyle = moonGlow;
+    context.beginPath();
+    context.arc(moonX, moonY, moonR * 2.6, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = theme.moon;
+    context.beginPath();
+    context.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    context.beginPath();
+    context.arc(moonX - moonR * 0.3, moonY - moonR * 0.2, moonR * 0.22, 0, Math.PI * 2);
+    context.arc(moonX + moonR * 0.35, moonY + moonR * 0.3, moonR * 0.16, 0, Math.PI * 2);
+    context.fill();
 
     for (const star of state.stars) {
       const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(state.time * 1.4 + star.phase));
@@ -90,8 +115,21 @@ export function createRenderer(canvas) {
     }
     context.globalAlpha = 1;
 
+    // Fireflies drift over the garden, slow and gold.
+    for (const fly of state.fireflies) {
+      const fx = fly.x + Math.sin(state.time * fly.speed + fly.phase) * 18;
+      const fy = fly.y + Math.cos(state.time * fly.speed * 0.7 + fly.phase) * 10;
+      const glow = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(state.time * 2.2 + fly.phase * 3));
+      context.globalAlpha = glow * 0.8;
+      context.fillStyle = '#ffe9a8';
+      context.beginPath();
+      context.arc(fx, fy, 2.2, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.globalAlpha = 1;
+
     // The garden floor: soft grass and night flowers the moth flies over.
-    context.fillStyle = PALETTE.grass;
+    context.fillStyle = theme.grass;
     context.fillRect(0, 96, FIELD.width, FIELD.height - 96);
     for (const tuft of state.tufts) {
       context.strokeStyle = PALETTE.grassTuft;
@@ -151,6 +189,17 @@ export function createRenderer(canvas) {
       if (!e.active) continue;
       const flash = e.flash > 0;
       const body = flash ? '#ffffff' : PALETTE.shadow;
+      if (e.spawnT > 0) {
+        // A shadow arriving: a closing portal ring where it will appear.
+        const frac = 1 - e.spawnT / 0.45;
+        context.globalAlpha = 0.7 * (1 - frac);
+        context.strokeStyle = '#8f6fd8';
+        context.lineWidth = 3;
+        context.beginPath();
+        context.arc(e.x, e.y, e.radius + 26 * (1 - frac), 0, Math.PI * 2);
+        context.stroke();
+        context.globalAlpha = 0.35 * frac;
+      }
       if (e.kind === KIND_WISP) {
         const wob = 1 + 0.08 * Math.sin(state.time * 6 + e.wobble);
         context.fillStyle = body;
@@ -196,6 +245,71 @@ export function createRenderer(canvas) {
           context.stroke();
           context.globalAlpha = 1;
         }
+      } else if (e.kind === KIND_SPITTER) {
+        // A hooded spitter: a diamond shadow with a glowing maw.
+        const winding = e.state === 1;
+        const angle = Math.atan2(state.player.y - e.y, state.player.x - e.x);
+        context.save();
+        context.translate(e.x, e.y);
+        context.rotate(angle);
+        context.fillStyle = winding ? '#c9b8ff' : body;
+        context.beginPath();
+        context.moveTo(18, 0);
+        context.lineTo(0, -13);
+        context.lineTo(-14, 0);
+        context.lineTo(0, 13);
+        context.closePath();
+        context.fill();
+        context.strokeStyle = PALETTE.shadowRim;
+        context.lineWidth = 2;
+        context.stroke();
+        context.fillStyle = winding ? '#ffffff' : '#b48cff';
+        context.beginPath();
+        context.arc(4, 0, winding ? 5 : 3.5, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+        if (winding) {
+          context.globalAlpha = 0.4 + 0.3 * Math.sin(state.time * 24);
+          context.strokeStyle = '#b48cff';
+          context.lineWidth = 2;
+          context.beginPath();
+          context.arc(e.x, e.y, e.radius + 8, 0, Math.PI * 2);
+          context.stroke();
+          context.globalAlpha = 1;
+        }
+      } else if (e.kind === KIND_WARDEN) {
+        // The Night Warden: a huge crowned shadow with a burning core.
+        context.fillStyle = body;
+        context.beginPath();
+        for (let i = 0; i < 12; i += 1) {
+          const a = (i / 12) * Math.PI * 2 + state.time * 0.25;
+          const r = i % 2 === 0 ? e.radius + 12 : e.radius - 4;
+          const px = e.x + Math.cos(a) * r;
+          const py = e.y + Math.sin(a) * r;
+          if (i === 0) context.moveTo(px, py);
+          else context.lineTo(px, py);
+        }
+        context.closePath();
+        context.fill();
+        context.strokeStyle = '#ff5d7a';
+        context.lineWidth = 3;
+        context.stroke();
+        const pulse = 0.6 + 0.4 * Math.sin(state.time * 5);
+        context.globalAlpha = pulse;
+        context.fillStyle = '#ff5d7a';
+        context.beginPath();
+        context.arc(e.x, e.y, 12, 0, Math.PI * 2);
+        context.fill();
+        context.globalAlpha = 1;
+        context.fillStyle = PALETTE.eye;
+        context.beginPath();
+        context.arc(e.x - 16, e.y - 10, 4, 0, Math.PI * 2);
+        context.arc(e.x + 16, e.y - 10, 4, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#3a2a55';
+        context.fillRect(e.x - 44, e.y - e.radius - 20, 88, 7);
+        context.fillStyle = PALETTE.danger;
+        context.fillRect(e.x - 44, e.y - e.radius - 20, 88 * (e.hp / e.maxHp), 7);
       } else {
         // Brute: a big spiked shadow with a health bar.
         context.fillStyle = body;
@@ -223,6 +337,37 @@ export function createRenderer(canvas) {
         context.fillStyle = PALETTE.danger;
         context.fillRect(e.x - 20, e.y - e.radius - 14, 40 * (e.hp / e.maxHp), 5);
       }
+      // An elite shadow wears a golden ring, so the player can see it is worth double.
+      if (e.elite) {
+        context.globalAlpha = 0.9;
+        context.strokeStyle = PALETTE.gold;
+        context.lineWidth = 2.5;
+        context.beginPath();
+        context.arc(e.x, e.y, e.radius + 6, 0, Math.PI * 2);
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+    }
+  }
+
+  function drawBolts(state) {
+    for (const b of state.bolts) {
+      if (!b.active) continue;
+      const halo = context.createRadialGradient(b.x, b.y, 1, b.x, b.y, 18);
+      halo.addColorStop(0, 'rgba(180, 140, 255, 0.8)');
+      halo.addColorStop(1, 'rgba(180, 140, 255, 0)');
+      context.fillStyle = halo;
+      context.beginPath();
+      context.arc(b.x, b.y, 18, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#d9c8ff';
+      context.beginPath();
+      context.arc(b.x, b.y, 6, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(b.x, b.y, 2.5, 0, Math.PI * 2);
+      context.fill();
     }
   }
 
@@ -370,6 +515,42 @@ export function createRenderer(canvas) {
     // Score and best, top right.
     text(scoreLabel(state.score), FIELD.width - 24, 18, 26, PALETTE.text, 'right', '700');
     text(`Best ${state.best ?? 0}`, FIELD.width - 24, 48, 16, PALETTE.muted, 'right');
+    // The combo chain lives under the light bar, clear of the moon: count, multiplier
+    // and the window draining away.
+    const combo = state.combo;
+    if (combo && combo.count >= 2) {
+      const mult = comboMultiplier(combo.count);
+      text(`COMBO x${combo.count}  ·  x${mult.toFixed(1)} score`, 24, 72, 17, PALETTE.gold, 'left', '700');
+      context.fillStyle = '#0a0e22';
+      roundRect(24, 96, 160, 6, 3);
+      context.fill();
+      context.fillStyle = PALETTE.gold;
+      if (combo.timer > 0) {
+        roundRect(24, 96, 160 * (combo.timer / 3), 6, 3);
+        context.fill();
+      }
+    }
+    // Moonpetals gathered, under the wave count: six a game, each worth 30 light.
+    text(`☾ ${state.petalsCollected ?? 0} moonpetals`, FIELD.width / 2, 76, 15, PALETTE.petal, 'center', '700');
+    // The Warden's health bar, top centre, while the boss lives.
+    let warden = null;
+    for (const e of state.enemies) if (e.active && e.kind === KIND_WARDEN) { warden = e; break; }
+    if (warden) {
+      text('THE NIGHT WARDEN', FIELD.width / 2, 100, 16, PALETTE.danger, 'center', '700');
+      context.fillStyle = '#0a0e22';
+      roundRect(FIELD.width / 2 - 160, 122, 320, 10, 5);
+      context.fill();
+      context.fillStyle = PALETTE.danger;
+      roundRect(FIELD.width / 2 - 160, 122, 320 * (warden.hp / warden.maxHp), 10, 5);
+      context.fill();
+    }
+    // Low light: a pulsing warning, so the danger is impossible to miss.
+    if (state.light < 25 && !state.over && !state.victory) {
+      const pulse = 0.6 + 0.4 * Math.sin(state.time * 6);
+      context.globalAlpha = pulse;
+      text('LIGHT LOW — FIND EMBERS', FIELD.width / 2, 156, 20, PALETTE.danger, 'center', '800');
+      context.globalAlpha = 1;
+    }
     // Flare cooldown, bottom left.
     text('FLARE  ·  Space / Click', 24, FIELD.height - 52, 15, PALETTE.muted, 'left', '700');
     const cdMax = FLARE.cooldown * (1 - FLARE.cooldownPerBlessing * (state.blessings.quick ?? 0));
@@ -479,6 +660,7 @@ export function createRenderer(canvas) {
     drawGarden(state);
     drawOrbs(state);
     drawEnemies(state);
+    drawBolts(state);
     drawMoth(state);
     drawParticles(state);
     drawFlareRing(state);
@@ -487,14 +669,39 @@ export function createRenderer(canvas) {
     if (screen === SCREEN_TITLE) {
       context.fillStyle = 'rgba(4, 6, 16, 0.45)';
       context.fillRect(0, 0, FIELD.width, FIELD.height);
+      // A great moth flies by the moon, high on the title screen.
+      context.save();
+      context.translate(1058, 168);
+      context.scale(1.9, 1.9);
+      context.rotate(0.25);
+      const titleFlap = Math.sin(state.time * 12);
+      for (const side of [-1, 1]) {
+        context.save();
+        context.scale(side, 1);
+        context.fillStyle = PALETTE.mothWing;
+        context.beginPath();
+        context.ellipse(13, -6 - titleFlap * 3, 15, 9 - titleFlap * 3.5, -0.5, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = '#e8a94c';
+        context.beginPath();
+        context.ellipse(12, 8 + titleFlap * 2, 11, 6 - titleFlap * 2, 0.5, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
+      context.fillStyle = '#5a3a1a';
+      context.beginPath();
+      context.ellipse(0, 0, 5, 11, 0, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
       context.textBaseline = 'alphabetic';
       text('LUMA', FIELD.width / 2, 250, 110, PALETTE.mothWing, 'center', '800');
       text('Night of the Ember Moth', FIELD.width / 2, 300, 30, PALETTE.text, 'center');
       text('Your light is your life. Gather embers, flare back the shadows,', FIELD.width / 2, 372, 20, PALETTE.muted, 'center');
       text('and hold the garden until dawn breaks after Night 5.', FIELD.width / 2, 402, 20, PALETTE.muted, 'center');
-      text('Fly with WASD or Arrow keys  ·  Space or Click to flare  ·  P to pause  ·  M to mute', FIELD.width / 2, 452, 19, PALETTE.text, 'center');
+      text('Chain kills for combo score  ·  Beware spitters and the Night Warden', FIELD.width / 2, 432, 19, PALETTE.gold, 'center');
+      text('Fly with WASD or Arrow keys  ·  Space or Click to flare  ·  P to pause  ·  M to mute', FIELD.width / 2, 462, 19, PALETTE.text, 'center');
       if (best > 0) text(`Best score ${best}`, FIELD.width / 2, 500, 20, PALETTE.gold, 'center', '700');
-      const pulse = 0.65 + 0.35 * Math.sin(state.time * 3);
+      const pulse = 0.65 + 0.35 * Math.sin(state.time * 3 + 2.2);
       context.globalAlpha = pulse;
       text('Press Space or click to begin', FIELD.width / 2, 566, 26, PALETTE.gold, 'center', '700');
       context.globalAlpha = 1;
@@ -508,7 +715,7 @@ export function createRenderer(canvas) {
     } else if (screen === SCREEN_OVER) {
       drawPanel('The Light Fades', [`Score ${state.score}`, `Best ${best}`, `Reached Night ${state.wave}  ·  ${state.kills} shadows scattered`], 'Press Space or click to fly again');
     } else if (screen === SCREEN_WIN) {
-      drawPanel('Dawn Breaks', [`Score ${state.score}`, `Best ${best}`, `All ${WAVES} nights survived`, `${state.kills} shadows scattered  ·  ${state.orbsCollected} orbs gathered, ${state.petalsCollected ?? 0} moonpetals`], 'Press Space or click to fly again');
+      drawPanel('Dawn Breaks', [`Score ${state.score}`, `Best ${best}`, `All ${WAVES} nights survived`, `${state.kills} shadows scattered  ·  ${state.orbsCollected} orbs gathered, ${state.petalsCollected ?? 0} moonpetals`, `Best combo x${state.combo ? state.combo.best : 0}`], 'Press Space or click to fly again');
     } else if (screen === SCREEN_PLAY && state.time < 6 && state.wave === 1) {
       text('Gather the glowing embers — your light is draining', FIELD.width / 2, 120, 20, PALETTE.text, 'center');
     }

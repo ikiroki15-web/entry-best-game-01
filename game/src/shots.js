@@ -11,7 +11,7 @@ import { EVENT_OVER, EVENT_WAVE_CLEAR, EVENT_WIN } from './world.js';
 import { SCREEN_BLESSING, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 
 const START_SECONDS = 6;
-const PLAY_SECONDS = 15;
+const PLAY_SECONDS = 60;
 const SCENE_LIMIT_SECONDS = 420;
 
 /** Steer toward the nearest ember, pushed away from shadows that get too close. When its
@@ -60,6 +60,18 @@ function autopilot(state, brave) {
       my += (dy / d) * push * 2.2;
     }
   }
+  // Dodge shadow bolts too: a bolt on course is worth more than an ember.
+  for (const b of state.bolts) {
+    if (!b.active) continue;
+    const dx = player.x - b.x;
+    const dy = player.y - b.y;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d < 130) {
+      const push = (130 - d) / 130;
+      mx += (dx / d) * push * 2.5;
+      my += (dy / d) * push * 2.5;
+    }
+  }
   // Stay inside the garden's edges.
   if (player.x < 90) mx += 1;
   if (player.x > FIELD.width - 90) mx -= 1;
@@ -79,13 +91,25 @@ function autopilot(state, brave) {
   return { dir, flare };
 }
 
-/** Run the world forward with the autopilot until `stop` says so, at most `limit` seconds. */
-function fly(world, limit, stop, brave) {
+/** Run the world forward with the autopilot until `stop` says so, at most `limit` seconds.
+ *  With `takeBlessing` set, a cleared night's blessing is taken at once so a long scene
+ *  flies on into the next night; without it the choice stays open for the caller. */
+function fly(world, limit, stop, brave, takeBlessing = true) {
   const steps = Math.floor(limit / STEP);
   for (let i = 0; i < steps; i += 1) {
     const { dir, flare } = autopilot(world.state, brave);
     const events = world.step(STEP, dir, flare, false);
     if (world.state.over) return events;
+    // A cleared night offers blessings: take Bright Heart when hurt, else the first,
+    // so a long scene flies on into the next night instead of stalling at the choice.
+    if (takeBlessing && (events & EVENT_WAVE_CLEAR)) {
+      let pick = 0;
+      if (world.state.light < 60) {
+        const heart = world.state.offered.findIndex((b) => b.id === 'heart');
+        if (heart >= 0) pick = heart;
+      }
+      world.applyBlessing(pick);
+    }
     if (stop(events)) return events;
   }
   return 0;
@@ -102,7 +126,20 @@ export function stageShot(name, world) {
     return { screen: SCREEN_TITLE, best: 0 };
   }
   if (name === 'play') {
-    fly(world, PLAY_SECONDS, () => false, false);
+    // Fly deep into the run with a brave pilot, and stop the moment Night 3 is
+    // properly crowded — nine shadows on screen at once — so the cover shows the
+    // game's mix (darts, spitters, a brute among the wisps), not an empty field.
+    fly(world, PLAY_SECONDS, () => {
+      if (world.state.wave < 3) return false;
+      let active = 0;
+      for (const e of world.state.enemies) if (e.active) active += 1;
+      return active >= 9;
+    }, true);
+    if (world.state.over) {
+      // The brave pilot died on the way: fall back to a short Night 1 flight.
+      world.reset();
+      fly(world, 15, () => false, false);
+    }
     return { screen: SCREEN_PLAY, best: world.state.score };
   }
   if (name === 'end') {
@@ -118,7 +155,9 @@ export function stageShot(name, world) {
     return { screen: SCREEN_OVER, best: world.state.score };
   }
   if (name === 'blessing') {
-    fly(world, SCENE_LIMIT_SECONDS, (events) => (events & EVENT_WAVE_CLEAR) !== 0, false);
+    // Leave the blessing choice open (no auto-take) so the scene shows Night 1's
+    // own choice, with the wave it cleared.
+    fly(world, SCENE_LIMIT_SECONDS, (events) => (events & EVENT_WAVE_CLEAR) !== 0, false, false);
     if (world.state.waveState !== 'blessing') {
       // The pilot could not clear the night: stage the choice over a cleared field.
       world.stageBlessing();
@@ -135,6 +174,8 @@ export function stageShot(name, world) {
     for (let i = 0; i < 5; i += 1) {
       fly(world, SCENE_LIMIT_SECONDS, (events) => (events & (EVENT_WIN | EVENT_WAVE_CLEAR)) !== 0, true);
       if (world.state.victory || world.state.over) break;
+      // fly() already took the blessing after each clear and started the next
+      // night; only take one here if a choice is somehow still waiting.
       if (world.state.waveState === 'blessing') {
         let pick = 0;
         if (world.state.light < 60) {
@@ -142,7 +183,7 @@ export function stageShot(name, world) {
           if (heart >= 0) pick = heart;
         }
         world.applyBlessing(pick);
-      } else break;
+      }
     }
     won = world.state.victory;
   }

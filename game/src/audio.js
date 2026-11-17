@@ -112,6 +112,13 @@ export function createAudio() {
       noise(0.28, 0.3, 2400);
       tone(220, 0.25, 'triangle', 0.18, 880);
     },
+    shoot() {
+      tone(520, 0.12, 'square', 0.08, 180);
+    },
+    roar() {
+      tone(70, 0.7, 'sawtooth', 0.3, 45);
+      noise(0.5, 0.18, 300);
+    },
     kill() {
       noise(0.14, 0.22, 1400);
       tone(320, 0.14, 'square', 0.1, 90);

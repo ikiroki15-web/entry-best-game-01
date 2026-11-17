@@ -74,15 +74,37 @@ export const ENEMY = {
   wisp: { hp: 1, speed: 96, radius: 14, score: 10, orbs: 1 },
   dart: { hp: 1, speed: 78, radius: 13, score: 20, orbs: 1, lungeSpeed: 430, lungeRange: 270, windup: 0.55, lungeTime: 0.34, recover: 0.6 },
   brute: { hp: 4, speed: 56, radius: 27, score: 40, orbs: 2, petals: 1 },
+  /** Spitter: keeps its distance and fires shadow bolts the moth must dodge. */
+  spitter: { hp: 2, speed: 72, radius: 14, score: 30, orbs: 1, shotInterval: 2.8, shotRange: 430, windup: 0.5 },
+  /** The Night Warden: Night 5's boss — slow, huge, summons wisps and bursts bolts. */
+  warden: { hp: 14, speed: 44, radius: 46, score: 500, orbs: 0, petals: 3 },
+};
+
+/** Shadow bolts: what spitters and the Warden fire. */
+export const BOLT = {
+  speed: 230,
+  radius: 7,
+  /** Light lost when a bolt hits the moth. */
+  hitLoss: 6,
+};
+
+/** Combo: kills chained within the window raise the score multiplier. */
+export const COMBO = {
+  /** Seconds a combo survives without another kill. */
+  window: 3,
+  /** Kills per multiplier step, and the score gained per step. */
+  killsPerStep: 4,
+  perStep: 0.5,
+  maxMult: 4,
 };
 
 /** Waves: how many of each shadow marches in, and how fast they arrive. */
 export const WAVE_DEFS = [
-  { wisp: 9, dart: 0, brute: 0, interval: 1.15 },
-  { wisp: 12, dart: 4, brute: 0, interval: 1.0 },
-  { wisp: 14, dart: 7, brute: 1, interval: 0.9 },
-  { wisp: 16, dart: 8, brute: 2, interval: 0.8 },
-  { wisp: 16, dart: 10, brute: 3, interval: 0.7 },
+  { wisp: 10, dart: 0, brute: 0, spitter: 0, warden: 0, interval: 1.05 },
+  { wisp: 12, dart: 4, brute: 0, spitter: 2, warden: 0, interval: 0.95 },
+  { wisp: 14, dart: 7, brute: 1, spitter: 3, warden: 0, interval: 0.85 },
+  { wisp: 16, dart: 8, brute: 2, spitter: 4, warden: 0, interval: 0.8 },
+  { wisp: 14, dart: 10, brute: 3, spitter: 4, warden: 1, interval: 0.7 },
 ];
 
 export const SCORE = {
@@ -90,7 +112,7 @@ export const SCORE = {
 };
 
 /** How many of each thing can exist at once; pools are allocated once, at boot. */
-export const POOL = { enemies: 48, orbs: 48, particles: 240, texts: 28 };
+export const POOL = { enemies: 48, orbs: 48, particles: 240, texts: 28, bolts: 40 };
 
 /** Blessings offered between waves. id, name, one-line promise, max stacks. */
 export const BLESSINGS = [

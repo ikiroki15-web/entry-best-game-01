@@ -10,7 +10,7 @@ import { createRandom } from './random.js';
 import { createAudio } from './audio.js';
 import {
   createWorld, EVENT_CHARM, EVENT_FLARE, EVENT_HIT, EVENT_KILL, EVENT_ORB,
-  EVENT_OVER, EVENT_PETAL, EVENT_WAVE_CLEAR, EVENT_WIN,
+  EVENT_OVER, EVENT_PETAL, EVENT_SHOOT, EVENT_WARDEN, EVENT_WAVE_CLEAR, EVENT_WIN,
 } from './world.js';
 import {
   ACTION_CONFIRM, ACTION_FLARE, ACTION_MUTE, ACTION_PAUSE, ACTION_PICK_1,
@@ -156,6 +156,8 @@ function runGame() {
     if (events & EVENT_ORB) audio.pickup();
     if (events & EVENT_PETAL) audio.petal();
     if (events & EVENT_FLARE) audio.flare();
+    if (events & EVENT_SHOOT) audio.shoot();
+    if (events & EVENT_WARDEN) audio.roar();
     if (events & EVENT_KILL) audio.kill();
     if (events & EVENT_HIT) {
       audio.hit();
